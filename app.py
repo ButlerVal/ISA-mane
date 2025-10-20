@@ -24,7 +24,8 @@ IMG_SIZE = (96, 96)
 MODEL_CONFIDENCE_THRESHOLD = 0.5
 
 # --- Model Loading ---
-# Using st.cache_resource to load models only once, making the app much faster on subsequent runs.
+# Using st.cache_resource to load models only once. Streamlit caches the result,
+# so this function is only slow on the very first run.
 @st.cache_resource
 def load_models():
     """Loads and returns the pre-trained CNN and EfficientNet models."""
@@ -77,12 +78,8 @@ def preprocess_for_efficientnet(image):
 
 # --- Main Application UI ---
 
-# Load models and store them in the session state
-if 'models_loaded' not in st.session_state:
-    st.session_state.cnn_model, st.session_state.efficientnet_model = load_models()
-    st.session_state.models_loaded = True
-
 # Sidebar with project information from your PDF
+# This UI part loads instantly, before any models are loaded.
 with st.sidebar:
     st.title("About This Project")
     st.image("https://placehold.co/300x150/f0f2f6/333333?text=Histopathology+Image&font=inter", use_column_width=True)
@@ -112,7 +109,7 @@ uploaded_file = st.file_uploader(
     help="Upload a histopathology image of breast tissue."
 )
 
-if uploaded_file is not None and st.session_state.models_loaded:
+if uploaded_file is not None:
     image = Image.open(uploaded_file).convert('RGB')
     
     # Create two columns for image and analysis
@@ -122,51 +119,55 @@ if uploaded_file is not None and st.session_state.models_loaded:
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
     with col2:
-        with st.spinner("Analyzing image..."):
-            # --- Feature 1: Validate Image Type ---
-            if not is_histopathology_image(image):
-                st.error("⚠️ This does not appear to be a histopathology image.", icon="🚫")
-                st.markdown("The system detected that the uploaded file lacks the color and texture features of a typical H&E-stained medical slide. **Please upload a valid image to proceed.**")
-            else:
-                st.success("✅ Valid histopathology image detected.", icon="👍")
+        # The user sees the image and then clicks the button to start analysis
+        if st.button("Analyze Image", use_container_width=True):
+            # Models are loaded ONLY when the button is clicked
+            with st.spinner("Loading models & analyzing image... This may take a moment on the first run."):
                 
-                # --- Feature 2: Run Predictions ---
-                cnn_model = st.session_state.cnn_model
-                efficientnet_model = st.session_state.efficientnet_model
-
-                # Preprocess image for each model
-                cnn_img = preprocess_for_cnn(image)
-                eff_img = preprocess_for_efficientnet(image)
-
-                # Get predictions
-                cnn_prob = cnn_model.predict(cnn_img)[0][0]
-                eff_prob = efficientnet_model.predict(eff_img)[0][0]
+                # Load the models using the cached function
+                cnn_model, efficientnet_model = load_models()
                 
-                # Ensemble by averaging
-                ensemble_prob = (cnn_prob + eff_prob) / 2
+                # Proceed only if models were loaded successfully
+                if cnn_model and efficientnet_model:
+                    # --- Feature 1: Validate Image Type ---
+                    if not is_histopathology_image(image):
+                        st.error("⚠️ This does not appear to be a histopathology image.", icon="🚫")
+                        st.markdown("The system detected that the uploaded file lacks the color and texture features of a typical H&E-stained medical slide. **Please upload a valid image to proceed.**")
+                    else:
+                        st.success("✅ Valid histopathology image detected.", icon="👍")
+                        
+                        # --- Feature 2: Run Predictions ---
+                        # Preprocess image for each model
+                        cnn_img = preprocess_for_cnn(image)
+                        eff_img = preprocess_for_efficientnet(image)
 
-                # Determine final classification and confidence
-                is_malignant = ensemble_prob > MODEL_CONFIDENCE_THRESHOLD
-                final_class = "Malignant" if is_malignant else "Benign"
-                confidence = ensemble_prob if is_malignant else 1 - ensemble_prob
+                        # Get predictions
+                        cnn_prob = cnn_model.predict(cnn_img)[0][0]
+                        eff_prob = efficientnet_model.predict(eff_img)[0][0]
+                        
+                        # Ensemble by averaging
+                        ensemble_prob = (cnn_prob + eff_prob) / 2
 
-                # --- Feature 3: Display Results ---
-                st.markdown("---")
-                st.subheader("Analysis Complete: Ensemble Result")
+                        # Determine final classification and confidence
+                        is_malignant = ensemble_prob > MODEL_CONFIDENCE_THRESHOLD
+                        final_class = "Malignant" if is_malignant else "Benign"
+                        confidence = ensemble_prob if is_malignant else 1 - ensemble_prob
 
-                if is_malignant:
-                    st.error(f"**Classification: {final_class}**", icon="❗")
-                else:
-                    st.success(f"**Classification: {final_class}**", icon="✅")
+                        # --- Feature 3: Display Results ---
+                        st.markdown("---")
+                        st.subheader("Analysis Complete: Ensemble Result")
 
-                st.metric(label="Model Confidence", value=f"{confidence:.2%}")
-                st.progress(confidence)
+                        if is_malignant:
+                            st.error(f"**Classification: {final_class}**", icon="❗")
+                        else:
+                            st.success(f"**Classification: {final_class}**", icon="✅")
 
-                with st.expander("🔬 View Individual Model Predictions"):
-                    st.markdown("The final result is an average of the outputs from two distinct AI models to improve reliability.")
-                    st.markdown(f"- **Custom CNN Model Prediction:** `{cnn_prob:.4f}`")
-                    st.markdown(f"- **EfficientNetB0 Model Prediction:** `{eff_prob:.4f}`")
-                    st.info("Values closer to `1.0` indicate a higher probability of being Malignant.", icon="ℹ️")
+                        st.metric(label="Model Confidence", value=f"{confidence:.2%}")
+                        st.progress(confidence)
 
-elif not st.session_state.models_loaded:
-    st.error("The prediction models are not available. The application cannot proceed.")
+                        with st.expander("🔬 View Individual Model Predictions"):
+                            st.markdown("The final result is an average of the outputs from two distinct AI models to improve reliability.")
+                            st.markdown(f"- **Custom CNN Model Prediction:** `{cnn_prob:.4f}`")
+                            st.markdown(f"- **EfficientNetB0 Model Prediction:** `{eff_prob:.4f}`")
+                            st.info("Values closer to `1.0` indicate a higher probability of being Malignant.", icon="ℹ️")
+
