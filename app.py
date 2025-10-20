@@ -7,148 +7,166 @@ from tensorflow.keras.applications.efficientnet import preprocess_input as eff_p
 import cv2
 import warnings
 
-# Suppress warnings
+# Suppress warnings for a cleaner interface
 warnings.filterwarnings("ignore")
 
-# --- Configuration ---
-# Set page configuration. This should be the first Streamlit command.
+# --- Page Configuration ---
+# This should be the first Streamlit command in your script
 st.set_page_config(
-    page_title="Breast Cancer Detection",
-    page_icon="🧬",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    page_title="Breast Cancer Detection App",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # --- Constants ---
 IMG_SIZE = (96, 96)
+MODEL_CONFIDENCE_THRESHOLD = 0.5
 
 # --- Model Loading ---
-# Use Streamlit's caching to load the models once and store them in memory.
-# This prevents reloading the models on every user interaction, which is slow.
-
+# Using st.cache_resource to load models only once, making the app much faster on subsequent runs.
 @st.cache_resource
-def load_cnn_model():
-    """Load the custom CNN model from disk."""
+def load_models():
+    """Loads and returns the pre-trained CNN and EfficientNet models."""
     try:
-        model = load_model("cnn_model.h5")
-        return model
+        cnn_model = load_model("cnn_model.h5")
+        efficientnet_model = load_model("efficientnet_model.h5")
+        return cnn_model, efficientnet_model
     except Exception as e:
-        st.error(f"Error loading CNN model: {e}")
-        return None
+        # Display an error message if models can't be loaded
+        st.error(f"Error loading models: {e}", icon="🚨")
+        return None, None
 
-@st.cache_resource
-def load_efficientnet_model():
-    """Load the EfficientNet model from disk."""
-    try:
-        model = load_model("efficientnet_model.h5")
-        return model
-    except Exception as e:
-        st.error(f"Error loading EfficientNet model: {e}")
-        return None
-
-# Load the models using the cached functions
-cnn_model = load_cnn_model()
-efficientnet_model = load_efficientnet_model()
-
-
-# --- Image Processing Functions ---
-
-def is_histopathology_image(img):
+# --- Image Processing and Validation ---
+def is_histopathology_image(image):
     """
-    A simple heuristic to check if an uploaded image is likely a histopathology slide.
-    It checks for the prevalence of pink and purple colors common in H&E stains.
+    Analyzes the uploaded image to determine if it's likely a histopathology slide.
+    This function checks for the distinct pink and purple colors of H&E staining.
     """
-    # Convert PIL Image to an array that OpenCV can use
-    img_array = np.array(img)
-    # Convert from RGB to HSV color space for better color analysis
+    # Convert the image to a format OpenCV can use
+    img_array = np.array(image.convert('RGB'))
+    # Switch to HSV color space for more effective color detection
     hsv = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
 
-    # Define the range for pink/purple colors in HSV
-    # These values might need tweaking for different staining processes
-    lower_bound = (120, 30, 50)
-    upper_bound = (170, 255, 255)
+    # Define the HSV color range for pinks and purples common in H&E stains
+    lower_bound = np.array([120, 40, 100])
+    upper_bound = np.array([170, 255, 255])
     
-    # Create a mask that only includes pixels within the pink/purple range
+    # Create a mask that isolates the target colors
     mask = cv2.inRange(hsv, lower_bound, upper_bound)
     
-    # Calculate the ratio of pink/purple pixels to the total number of pixels
-    pink_ratio = np.sum(mask > 0) / (img.size[0] * img.size[1])
+    # Calculate the percentage of the image that contains these colors
+    color_ratio = np.sum(mask > 0) / (image.size[0] * image.size[1])
 
-    # If more than 2% of the pixels are pink/purple, assume it's a valid image
-    return pink_ratio > 0.02
+    # If over 5% of the image is pink/purple, we'll consider it valid.
+    return color_ratio > 0.05
 
 def preprocess_for_cnn(image):
-    """Preprocesses the image for the custom CNN model."""
+    """Prepares an image for the custom CNN model."""
     image = image.resize(IMG_SIZE)
-    image_array = np.array(image) / 255.0  # Normalize to [0, 1]
-    return np.expand_dims(image_array, axis=0) # Add batch dimension
+    image_array = np.array(image) / 255.0  # Normalize pixels to [0, 1]
+    return np.expand_dims(image_array, axis=0)
 
 def preprocess_for_efficientnet(image):
-    """
-    Preprocesses the image for the EfficientNet model.
-    EfficientNet requires a specific input format.
-    """
+    """Prepares an image for the EfficientNetB0 model using its specific requirements."""
     image = image.resize(IMG_SIZE)
     image_array = np.array(image)
-    image_array = eff_preprocess(image_array) # Use the specific EfficientNet preprocessor
-    return np.expand_dims(image_array, axis=0) # Add batch dimension
+    # Use the dedicated preprocessing function for EfficientNet
+    preprocessed_array = eff_preprocess(image_array)
+    return np.expand_dims(preprocessed_array, axis=0)
 
+# --- Main Application UI ---
 
-# --- Streamlit User Interface ---
+# Load models and store them in the session state
+if 'models_loaded' not in st.session_state:
+    st.session_state.cnn_model, st.session_state.efficientnet_model = load_models()
+    st.session_state.models_loaded = True
 
-st.title("🧬 Histopathology Breast Cancer Classifier")
-st.markdown("Upload a histopathology image to classify it as **Benign** or **Malignant** using an ensemble of two deep learning models.")
+# Sidebar with project information from your PDF
+with st.sidebar:
+    st.title("About This Project")
+    st.image("https://placehold.co/300x150/f0f2f6/333333?text=Histopathology+Image&font=inter", use_column_width=True)
+    st.markdown("""
+        This app is a demonstration of the MSc thesis project: **"An Ensemble Deep Learning Approach for Detecting Breast Cancer from Histopathology Images."**
+    """)
+    st.info("By **Isa**", icon="🧑‍💻")
+    st.markdown("""
+        ### Why This Project?
+        Early detection of breast cancer can save lives. This tool uses AI to assist pathologists by analyzing histopathology images to distinguish between **Benign** (non-harmful) and **Malignant** (dangerous) tissue, aiming to make diagnosis faster and more accurate.
+    """)
+    st.markdown("""
+        ### How It Works
+        1.  **Upload a histopathology image.**
+        2.  The app validates if it's a real medical slide.
+        3.  Two AI models (**Custom CNN** & **EfficientNetB0**) analyze it.
+        4.  An **ensemble prediction** is made by averaging their results for higher accuracy.
+    """)
 
-uploaded_file = st.file_uploader("📤 Choose an image...", type=["jpg", "jpeg", "png"])
+# Main page content
+st.title("🔬 Breast Cancer Detection from Histopathology Images")
+st.markdown("Upload a breast tissue slide image to classify it as **Benign** or **Malignant**.")
 
-if uploaded_file and cnn_model and efficientnet_model:
-    # Open and display the image
+uploaded_file = st.file_uploader(
+    "Choose an image file",
+    type=["jpg", "jpeg", "png", "tif"],
+    help="Upload a histopathology image of breast tissue."
+)
+
+if uploaded_file is not None and st.session_state.models_loaded:
     image = Image.open(uploaded_file).convert('RGB')
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    # Create two columns for image and analysis
+    col1, col2 = st.columns([2, 3])
+
+    with col1:
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    # Add a prediction button
-    if st.button("Classify Image", use_container_width=True):
+    with col2:
         with st.spinner("Analyzing image..."):
-            
-            # First, check if the image appears to be a valid histopathology slide
+            # --- Feature 1: Validate Image Type ---
             if not is_histopathology_image(image):
-                st.error("🚫 This doesn't look like a histopathology image. Please upload a valid H&E stained tissue sample.")
+                st.error("⚠️ This does not appear to be a histopathology image.", icon="🚫")
+                st.markdown("The system detected that the uploaded file lacks the color and texture features of a typical H&E-stained medical slide. **Please upload a valid image to proceed.**")
             else:
-                # Preprocess the image for each model
+                st.success("✅ Valid histopathology image detected.", icon="👍")
+                
+                # --- Feature 2: Run Predictions ---
+                cnn_model = st.session_state.cnn_model
+                efficientnet_model = st.session_state.efficientnet_model
+
+                # Preprocess image for each model
                 cnn_img = preprocess_for_cnn(image)
                 eff_img = preprocess_for_efficientnet(image)
 
-                # Get predictions from both models
+                # Get predictions
                 cnn_prob = cnn_model.predict(cnn_img)[0][0]
                 eff_prob = efficientnet_model.predict(eff_img)[0][0]
                 
-                # Simple averaging for the ensemble prediction
+                # Ensemble by averaging
                 ensemble_prob = (cnn_prob + eff_prob) / 2
 
-                # Determine the final class based on the ensemble probability
-                is_malignant = ensemble_prob > 0.5
+                # Determine final classification and confidence
+                is_malignant = ensemble_prob > MODEL_CONFIDENCE_THRESHOLD
                 final_class = "Malignant" if is_malignant else "Benign"
                 confidence = ensemble_prob if is_malignant else 1 - ensemble_prob
 
-                # Display the result
-                st.subheader("Classification Result")
-                if is_malignant:
-                    st.error(f"**Result: {final_class}**")
-                else:
-                    st.success(f"**Result: {final_class}**")
-                
-                st.metric(label="Model Confidence", value=f"{confidence:.2%}")
-                
-                with st.expander("🔬 View Model Details"):
-                    st.markdown("The final prediction is an average of the outputs from two different models:")
-                    st.progress(ensemble_prob)
-                    st.markdown(f"- **Custom CNN Prediction:** `{cnn_prob:.4f}`")
-                    st.markdown(f"- **EfficientNet Prediction:** `{eff_prob:.4f}`")
-                    st.markdown(f"- **Ensemble Average:** `{ensemble_prob:.4f}`")
-                    st.info("A value closer to 1.0 indicates a higher probability of being Malignant.", icon="ℹ️")
+                # --- Feature 3: Display Results ---
+                st.markdown("---")
+                st.subheader("Analysis Complete: Ensemble Result")
 
-elif uploaded_file:
-    st.error("Models could not be loaded. Please check the logs.")
+                if is_malignant:
+                    st.error(f"**Classification: {final_class}**", icon="❗")
+                else:
+                    st.success(f"**Classification: {final_class}**", icon="✅")
+
+                st.metric(label="Model Confidence", value=f"{confidence:.2%}")
+                st.progress(confidence)
+
+                with st.expander("🔬 View Individual Model Predictions"):
+                    st.markdown("The final result is an average of the outputs from two distinct AI models to improve reliability.")
+                    st.markdown(f"- **Custom CNN Model Prediction:** `{cnn_prob:.4f}`")
+                    st.markdown(f"- **EfficientNetB0 Model Prediction:** `{eff_prob:.4f}`")
+                    st.info("Values closer to `1.0` indicate a higher probability of being Malignant.", icon="ℹ️")
+
+elif not st.session_state.models_loaded:
+    st.error("The prediction models are not available. The application cannot proceed.")
