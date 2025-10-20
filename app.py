@@ -1,12 +1,19 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import streamlit as st
 import numpy as np
 from PIL import Image
 import tensorflow as tf
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 import cv2
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# Configure TensorFlow for CPU
+tf.config.set_visible_devices([], 'GPU')
 
 # Set page config first
 st.set_page_config(
@@ -167,4 +174,4 @@ if uploaded_file:
 
 # Add footer
 st.markdown("---")
-st.caption("Developed with love | © 2024")
+st.caption("Developed with ❤️ for Breast Cancer Detection")
