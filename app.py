@@ -31,11 +31,23 @@ def is_histopathology_image(img):
 
     return pink_ratio > 0.02  # Adjustable threshold
 
-# Image Preprocessing
+# Image Preprocessing - MODIFIED FOR GRAYSCALE
 def preprocess_image(image):
+    # Resize the image
     image = image.resize(IMG_SIZE)
+    
+    # Convert to grayscale
+    image = image.convert('L')
+    
+    # Convert to numpy array and normalize
     image = np.array(image) / 255.0
+    
+    # Add channel dimension (height, width, 1)
+    image = np.expand_dims(image, axis=-1)
+    
+    # Add batch dimension (1, height, width, 1)
     image = np.expand_dims(image, axis=0)
+    
     return image
 
 # Streamlit UI
@@ -54,6 +66,10 @@ if uploaded_file:
     else:
         # Preprocess and predict
         processed_img = preprocess_image(image)
+        
+        # Debug: Show processed image shape
+        st.write(f"Processed image shape: {processed_img.shape}")
+        
         cnn_prob = cnn_model.predict(processed_img)[0][0]
         eff_prob = efficientnet_model.predict(processed_img)[0][0]
 
