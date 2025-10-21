@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 from PIL import Image
 import tensorflow as tf
-from tensorflow.keras.models import load_model
+from keras.models import load_model
 from tensorflow.keras.applications.efficientnet import preprocess_input as eff_preprocess
 import cv2
 import warnings
