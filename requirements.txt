@@ -1,4 +1,5 @@
 streamlit
+keras
 tensorflow-cpu
 opencv-python-headless
 Pillow
