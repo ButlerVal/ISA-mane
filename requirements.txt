@@ -1,6 +1,7 @@
-streamlit
+streamlit==1.28.0
 tensorflow==2.15.0
 keras==2.15.0
-opencv-python-headless
-Pillow
-numpy
+numpy==1.24.3
+Pillow==10.0.1
+opencv-python==4.8.1.78
+protobuf==3.20.3
