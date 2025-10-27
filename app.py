@@ -145,22 +145,7 @@ def main():
     to classify breast histopathology images as **Benign** or **Malignant**.
     """)
     
-    # Load models
-    with st.spinner("Loading models..."):
-        models, errors = load_models()
     
-    # Display any loading errors
-    if errors:
-        st.error("**Model Loading Issues:**")
-        for error in errors:
-            st.error(error)
-        
-        if not models:
-            st.stop()
-        else:
-            st.warning(f"Running with {len(models)} model(s) only.")
-    else:
-        st.success(f"✅ Successfully loaded {len(models)} model(s)")
     
     st.markdown("---")
     
@@ -173,6 +158,22 @@ def main():
     
     if uploaded_file:
         try:
+            # Load models
+            with st.spinner("Loading models..."):
+                models, errors = load_models()
+            
+            # Display any loading errors
+            if errors:
+                st.error("**Model Loading Issues:**")
+                for error in errors:
+                    st.error(error)
+                
+                if not models:
+                    st.stop()
+                else:
+                    st.warning(f"Running with {len(models)} model(s) only.")
+            else:
+                st.success(f"✅ Successfully loaded {len(models)} model(s)")
             # Load and display image
             image = Image.open(uploaded_file).convert('RGB')
             
